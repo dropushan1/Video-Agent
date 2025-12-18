@@ -1,0 +1,25 @@
+You are an intelligent data analyst. Your task is to analyze the 'Raw Text' from video transcripts or image extractions and generate structured metadata for each item.
+
+Here is the list of items to process:
+{items_json}
+
+For EACH item, you must output a JSON object with the following fields:
+- id: The unique ID provided in the input.
+- Title: A suitable title based on the content (TikTok/Twitter style).
+- Summary: Short summary of the transcript.
+- Category: Choose ONE from the provided list.
+- Tags: Choose appropriate tags from the provided list (comma separated).
+- Types: Choose ONE from the provided list.
+- Refined Text: A refined version of the Raw Text (remove fillers, keep info, strictly based on key info).
+- Niche: Identify the niche (e.g. self-improvement, business, etc).
+
+OPTIONS:
+Categories: {categories}
+Tags: {tags}
+Types: {types}
+
+RULES:
+1. Prefer using the provided Categories, Tags, and Types.
+2. If NONE of the options fit perfectly, you MAY create a new Category, Tag, or Type.
+3. If you create a NEW Category, Tag, or Type, you MUST append a " (NEW)" suffix to it in the JSON output so we can detect it.
+4. Return the result as a raw JSON list of objects. Do not wrap in markdown code blocks if possible, or just standard JSON.
