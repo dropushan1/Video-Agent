@@ -103,3 +103,104 @@ def get_full_video_details(video_ids):
         return {}
     finally:
         conn.close()
+
+def get_unique_filter_options():
+    """
+    Fetch unique values for platform, category, tags, and types for the gallery UI.
+    """
+    conn = sqlite3.connect(config.DB_PATH)
+    c = conn.cursor()
+    
+    options = {
+        'platform': [],
+        'category': [],
+        'tags': [],
+        'types': []
+    }
+    
+    try:
+        # Get platforms
+        c.execute("SELECT DISTINCT platform FROM videos WHERE platform IS NOT NULL AND platform != ''")
+        options['platform'] = [r[0] for r in c.fetchall()]
+        
+        # Get categories
+        c.execute("SELECT DISTINCT category FROM videos WHERE category IS NOT NULL AND category != ''")
+        options['category'] = [r[0] for r in c.fetchall()]
+        
+        # Get types
+        c.execute("SELECT DISTINCT types FROM videos WHERE types IS NOT NULL AND types != ''")
+        options['types'] = [r[0] for r in c.fetchall()]
+        
+        # For tags, we need to split by comma as they are often comma-separated strings
+        c.execute("SELECT DISTINCT tags FROM videos WHERE tags IS NOT NULL AND tags != ''")
+        all_tags = set()
+        for row in c.fetchall():
+            if row[0]:
+                tags = [t.strip() for t in row[0].split(',') if t.strip()]
+                all_tags.update(tags)
+        options['tags'] = sorted(list(all_tags))
+        
+        return options
+    except Exception as e:
+        print(f"Database error getting options: {e}")
+        return options
+    finally:
+        conn.close()
+
+def get_gallery_videos(filters):
+    """
+    Fetch videos based on multiple filter criteria.
+    filters: {'platform': [], 'category': [], 'tags': [], 'types': []}
+    """
+    conn = sqlite3.connect(config.DB_PATH)
+    conn.row_factory = sqlite3.Row
+    c = conn.cursor()
+    
+    sql = "SELECT * FROM videos"
+    conditions = []
+    params = []
+    
+    if filters.get('platform'):
+        placeholders = ', '.join(['?'] * len(filters['platform']))
+        conditions.append(f"platform IN ({placeholders})")
+        params.extend(filters['platform'])
+        
+    if filters.get('category'):
+        cat_conditions = []
+        for cat in filters['category']:
+            cat_conditions.append("category LIKE ?")
+            params.append(f"%{cat}%")
+        if cat_conditions:
+            conditions.append(f"({' OR '.join(cat_conditions)})")
+            
+    if filters.get('types'):
+        type_conditions = []
+        for t in filters['types']:
+            type_conditions.append("types LIKE ?")
+            params.append(f"%{t}%")
+        if type_conditions:
+            conditions.append(f"({' OR '.join(type_conditions)})")
+            
+    if filters.get('tags'):
+        tag_conditions = []
+        for tag in filters['tags']:
+            tag_conditions.append("tags LIKE ?")
+            params.append(f"%{tag}%")
+        if tag_conditions:
+            conditions.append(f"({' OR '.join(tag_conditions)})")
+            
+    if conditions:
+        sql += " WHERE " + " AND ".join(conditions)
+    
+    # Order by ID or something consistent
+    sql += " ORDER BY id DESC"
+    
+    try:
+        c.execute(sql, params)
+        rows = c.fetchall()
+        return [dict(row) for row in rows]
+    except Exception as e:
+        print(f"Database search error: {e}")
+        return []
+    finally:
+        conn.close()

@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gallery | Video Agent</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&family=Outfit:wght@300;400;600;800&display=swap"
+        rel="stylesheet">
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+
+<body class="gallery-page">
+    <div class="bg-gradient"></div>
+
+    <div class="app-container">
+        <!-- Main Workspace -->
+        <div class="main-workspace">
+            <header>
+                <div class="logo">
+                    <i class="fa-solid fa-photo-film pulse-icon"></i>
+                    <h1>Knowledge Gallery</h1>
+                </div>
+                <div class="header-actions">
+                    <nav class="main-nav">
+                        <a href="/" class="nav-link">Chat</a>
+                        <a href="/gallery" class="nav-link active">Gallery</a>
+                    </nav>
+                    <div class="status-indicator">
+                        <span class="dot"></span> Online
+                    </div>
+                </div>
+            </header>
+
+            <!-- Filter Toggle & Panel -->
+            <div class="filter-controls">
+                <button id="filter-toggle" class="filter-toggle-btn">
+                    <i class="fa-solid fa-filter"></i> Filters
+                    <span id="active-filter-count" class="filter-count hidden">0</span>
+                </button>
+                <button id="apply-filter-btn" class="apply-btn">
+                    <i class="fa-solid fa-play"></i> Apply Filters
+                </button>
+            </div>
+
+            <div id="filter-panel" class="filter-panel hidden">
+                <div class="filter-sections-container">
+                    <div class="filter-section" data-type="platform">
+                        <h3>Platforms</h3>
+                        <div class="filter-options" id="platform-options"></div>
+                    </div>
+                    <div class="filter-section" data-type="category">
+                        <h3>Categories</h3>
+                        <div class="filter-options" id="category-options"></div>
+                    </div>
+                    <div class="filter-section" data-type="types">
+                        <h3>Types</h3>
+                        <div class="filter-options" id="types-options"></div>
+                    </div>
+                    <div class="filter-section" data-type="tags">
+                        <h3>Tags</h3>
+                        <div class="filter-options" id="tags-options"></div>
+                    </div>
+                </div>
+            </div>
+
+            <main id="gallery-main" class="gallery-grid-view">
+                <div id="video-grid" class="gallery-video-grid">
+                    <!-- Gallery items will appear here -->
+                </div>
+
+                <div id="empty-state" class="empty-state hidden">
+                    <i class="fa-solid fa-search"></i>
+                    <h2>No matches found</h2>
+                    <p>Try adjusting your filters to find what you're looking for.</p>
+                </div>
+            </main>
+        </div>
+    </div>
+
+    <!-- TikTok Style Viewer Modal -->
+    <div id="tiktok-modal" class="tiktok-modal hidden">
+        <button id="close-tiktok" class="close-tiktok-btn">&times;</button>
+        <div id="tiktok-container" class="tiktok-container">
+            <!-- Items will be injected here for vertical scrolling -->
+        </div>
+
+        <div class="tiktok-controls">
+            <button class="nav-prev"><i class="fa-solid fa-chevron-up"></i></button>
+            <button class="nav-next"><i class="fa-solid fa-chevron-down"></i></button>
+        </div>
+    </div>
+
+    <!-- Templates -->
+    <template id="gallery-card-template">
+        <div class="gallery-card">
+            <div class="card-media">
+                <!-- Video/Img -->
+                <div class="media-overlay">
+                    <i class="fa-solid fa-expand"></i>
+                </div>
+            </div>
+            <div class="card-info">
+                <span class="card-platform"></span>
+                <h3 class="card-title"></h3>
+            </div>
+        </div>
+    </template>
+
+    <template id="tiktok-item-template">
+        <div class="tiktok-item">
+            <div class="tiktok-media-wrapper">
+                <!-- Media -->
+            </div>
+            <div class="tiktok-info">
+                <div class="tiktok-meta">
+                    <span class="tiktok-platform"></span>
+                    <h2 class="tiktok-title"></h2>
+                </div>
+                <div class="tiktok-description">
+                    <p class="tiktok-summary"></p>
+                    <div class="tiktok-tags"></div>
+                </div>
+            </div>
+        </div>
+    </template>
+
+    <script src="{{ url_for('static', filename='js/gallery.js') }}"></script>
+</body>
+
+</html>

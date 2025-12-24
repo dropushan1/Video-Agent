@@ -1,7 +1,8 @@
 import sqlite3
 import os
 
-DB_NAME = "video_agent.db"
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+DB_NAME = os.path.join(SCRIPT_DIR, "video_agent.db")
 
 def inspect_db():
     conn = sqlite3.connect(DB_NAME)

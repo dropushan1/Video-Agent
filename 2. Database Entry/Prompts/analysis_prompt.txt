@@ -20,6 +20,6 @@ Types: {types}
 
 RULES:
 1. Prefer using the provided Categories, Tags, and Types.
-2. If NONE of the options fit perfectly, you MAY create a new Category, Tag, or Type.
+2. If NONE of the options fit perfectly, you MAY create a new Category, Tag, or Type but only if there isnt any close match.
 3. If you create a NEW Category, Tag, or Type, you MUST append a " (NEW)" suffix to it in the JSON output so we can detect it.
 4. Return the result as a raw JSON list of objects. Do not wrap in markdown code blocks if possible, or just standard JSON.

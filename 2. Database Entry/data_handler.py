@@ -4,16 +4,25 @@ import os
 import json
 from google import genai
 import itertools
+import uuid
 
 # Config
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_NAME = os.path.join(SCRIPT_DIR, "video_agent.db")
 CSV_PATH = os.path.join(SCRIPT_DIR, "metadata.csv")
 PROMPT_PATH = os.path.join(SCRIPT_DIR, "Prompts/analysis_prompt.txt")
-AI_KEY = "AIzaSyBg9la5eNcx4LzwB9uqj_QYBPNP0dn4ARA"
+API_KEYS = [
+    "AIzaSyAOCPC5RkMff3LbjyKd5N1ma78adhECZmk",
+    "AIzaSyBFzmybfuyeJnyyyo4rGt7eGOZ_s6RKwLo",
+    "AIzaSyD-E9B4J4V092vCnBXf3UsKqliU6rdf6rs"
+]
 
-# Initialize AI Client
-client = genai.Client(api_key=AI_KEY)
+# Initialize AI Clients
+clients = [genai.Client(api_key=key) for key in API_KEYS]
+client_rotator = itertools.cycle(clients)
+
+def get_unique_id():
+    return str(uuid.uuid4())[:8]
 
 # --- Database ---
 def init_db():
@@ -30,8 +39,16 @@ def init_db():
         raw_text TEXT,
         platform TEXT,
         file_type TEXT,
-        file_path TEXT
+        file_path TEXT,
+        link TEXT,
+        original_filename TEXT
     )""")
+    # Migration: Add original_filename column if it doesn't exist
+    try:
+        c.execute("ALTER TABLE videos ADD COLUMN original_filename TEXT")
+    except sqlite3.OperationalError:
+        # Column already exists
+        pass
     conn.commit()
     conn.close()
 
@@ -45,22 +62,67 @@ def insert_record(record):
     conn.commit()
     conn.close()
 
+def check_filename_exists(filename):
+    """
+    Checks if a record with the same original_filename already exists.
+    Returns True if exists, False otherwise.
+    """
+    if not filename or not filename.strip():
+        return False
+    conn = sqlite3.connect(DB_NAME)
+    c = conn.cursor()
+    c.execute("SELECT id FROM videos WHERE original_filename = ? LIMIT 1", (filename,))
+    result = c.fetchone()
+    conn.close()
+    return result[0] if result else None
+
 def check_text_exists(raw_text):
     """
     Checks if a record with the same raw_text already exists.
     Returns True if exists, False otherwise.
     """
+    if not raw_text or not raw_text.strip():
+        return False
     conn = sqlite3.connect(DB_NAME)
     c = conn.cursor()
     c.execute("SELECT id FROM videos WHERE raw_text = ? LIMIT 1", (raw_text,))
     result = c.fetchone()
     conn.close()
-    return result is not None
+    return result[0] if result else None
+
+def check_link_exists(link):
+    """
+    Checks if a record with the same link already exists.
+    Returns True if exists, False otherwise.
+    """
+    if not link or not link.strip():
+        return False
+    conn = sqlite3.connect(DB_NAME)
+    c = conn.cursor()
+    c.execute("SELECT id FROM videos WHERE link = ? LIMIT 1", (link,))
+    result = c.fetchone()
+    conn.close()
+    return result[0] if result else None
+
+def get_existing_data(uid):
+    """
+    Returns (raw_text, refined_text, link) for a given ID.
+    Used for Smart Resume.
+    """
+    if not uid:
+        return None
+    conn = sqlite3.connect(DB_NAME)
+    c = conn.cursor()
+    c.execute("SELECT raw_text, refined_text, link FROM videos WHERE id = ?", (uid,))
+    result = c.fetchone()
+    conn.close()
+    return result
 
 # --- CSV Metadata (Columnar) ---
 def load_metadata():
     """
     Returns dict: {'Category': [list], 'Tags': [list], 'Types': [list], 'Platform': [list]}
+    Handles wide CSV where columns may have different number of rows.
     """
     data = {'Category': [], 'Tags': [], 'Types': [], 'Platform': []}
     if not os.path.exists(CSV_PATH):
@@ -70,27 +132,28 @@ def load_metadata():
         reader = csv.DictReader(f)
         for row in reader:
             for key in data.keys():
-                if row.get(key) and row[key].strip():
-                    data[key].append(row[key].strip())
+                val = row.get(key)
+                if val and val.strip():
+                    data[key].append(val.strip())
     return data
 
 def save_new_metadata(col_name, value):
     """
     Adds value to the specified column and rewrites the CSV.
-    col_name should be one of 'Category', 'Tags', 'Types', 'Platform'
+    Performs case-insensitive duplicate check.
     """
     current_data = load_metadata()
+    clean_val = value.strip()
     
-    # Check if duplicate
-    if value in current_data.get(col_name, []):
+    if not clean_val or col_name not in current_data:
+        return
+
+    # Case-insensitive check
+    if any(v.lower() == clean_val.lower() for v in current_data[col_name]):
         return
 
     # Add new val
-    if col_name in current_data:
-        current_data[col_name].append(value)
-    else:
-        # Fallback if somehow invalid col
-        return
+    current_data[col_name].append(clean_val)
 
     # Rewrite CSV
     # 1. Determine max rows
@@ -136,13 +199,29 @@ def analyze_batch(items):
     prompt = prompt.replace("{types}", ", ".join(meta['Types'])) # Key in CSV is 'Types'
     prompt = prompt.replace("{items_json}", json.dumps(items, indent=2))
 
-    # 3. Call AI
+    # 3. Call AI (Using rotated client)
+    current_client = next(client_rotator)
+    # For logging, find which index it is
     try:
-        response = client.models.generate_content(
+        key_idx = clients.index(current_client) + 1
+        print(f"      (Using API Key {key_idx}/3)")
+    except:
+        pass
+
+    try:
+        response = current_client.models.generate_content(
             model="gemini-3-flash-preview", 
             contents=prompt
         )
-        text = response.text.strip()
+        
+        # Extract text parts only to avoid 'thought_signature' warning
+        text_parts = []
+        if response.candidates and response.candidates[0].content.parts:
+            for part in response.candidates[0].content.parts:
+                if part.text:
+                    text_parts.append(part.text)
+        
+        text = "".join(text_parts).strip()
         
         # Clean markdown
         if text.startswith("```json"): text = text[7:]
@@ -150,5 +229,8 @@ def analyze_batch(items):
         
         return json.loads(text)
     except Exception as e:
+        error_msg = str(e)
+        if "429" in error_msg or "RESOURCE_EXHAUSTED" in error_msg:
+             raise RuntimeError("QUOTA_EXCEEDED")
         print(f"   [Error] AI Analysis failed: {e}")
         return []

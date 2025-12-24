@@ -25,7 +25,8 @@ def transcribe_audio(file_path):
     """
     temp_audio_path = "temp_converted_audio.mp3"
     target_path = file_path
-    is_video = not file_path.lower().endswith('.mp3')
+    video_exts = {'.mp4', '.mov', '.avi', '.mkv', '.webm'}
+    is_video = any(file_path.lower().endswith(ext) for ext in video_exts)
     transcript_text = ""
 
     try:
