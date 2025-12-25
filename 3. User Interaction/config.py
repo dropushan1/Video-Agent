@@ -1,4 +1,8 @@
 import os
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
 
 # Base paths
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -12,6 +16,5 @@ CSV_PATH = os.path.join(PARENT_DIR, "2. Database Entry", "metadata.csv")
 PROMPTS_DIR = os.path.join(SCRIPT_DIR, "Prompts")
 
 # API Configuration
-# Note: Using the key found in existing data_handler.py
-GOOGLE_API_KEY = "AIzaSyBg9la5eNcx4LzwB9uqj_QYBPNP0dn4ARA"
+GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 MODEL_NAME = "gemini-3-flash-preview"

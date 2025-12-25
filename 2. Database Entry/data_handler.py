@@ -5,17 +5,20 @@ import json
 from google import genai
 import itertools
 import uuid
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
 
 # Config
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_NAME = os.path.join(SCRIPT_DIR, "video_agent.db")
 CSV_PATH = os.path.join(SCRIPT_DIR, "metadata.csv")
 PROMPT_PATH = os.path.join(SCRIPT_DIR, "Prompts/analysis_prompt.txt")
-API_KEYS = [
-    "AIzaSyAOCPC5RkMff3LbjyKd5N1ma78adhECZmk",
-    "AIzaSyBFzmybfuyeJnyyyo4rGt7eGOZ_s6RKwLo",
-    "AIzaSyD-E9B4J4V092vCnBXf3UsKqliU6rdf6rs"
-]
+
+# Load API keys from environment
+raw_keys = os.getenv("GEMINI_API_KEYS", "")
+API_KEYS = [k.strip() for k in raw_keys.split(",") if k.strip()]
 
 # Initialize AI Clients
 clients = [genai.Client(api_key=key) for key in API_KEYS]
@@ -40,7 +43,6 @@ def init_db():
         platform TEXT,
         file_type TEXT,
         file_path TEXT,
-        link TEXT,
         original_filename TEXT
     )""")
     # Migration: Add original_filename column if it doesn't exist
@@ -90,30 +92,17 @@ def check_text_exists(raw_text):
     conn.close()
     return result[0] if result else None
 
-def check_link_exists(link):
-    """
-    Checks if a record with the same link already exists.
-    Returns True if exists, False otherwise.
-    """
-    if not link or not link.strip():
-        return False
-    conn = sqlite3.connect(DB_NAME)
-    c = conn.cursor()
-    c.execute("SELECT id FROM videos WHERE link = ? LIMIT 1", (link,))
-    result = c.fetchone()
-    conn.close()
-    return result[0] if result else None
 
 def get_existing_data(uid):
     """
-    Returns (raw_text, refined_text, link) for a given ID.
+    Returns (raw_text, refined_text) for a given ID.
     Used for Smart Resume.
     """
     if not uid:
         return None
     conn = sqlite3.connect(DB_NAME)
     c = conn.cursor()
-    c.execute("SELECT raw_text, refined_text, link FROM videos WHERE id = ?", (uid,))
+    c.execute("SELECT raw_text, refined_text FROM videos WHERE id = ?", (uid,))
     result = c.fetchone()
     conn.close()
     return result

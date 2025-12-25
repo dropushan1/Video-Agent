@@ -104,10 +104,27 @@ def get_full_video_details(video_ids):
     finally:
         conn.close()
 
+import functools
+import time
+
+# Simple cache for filter options
+_filter_cache = {
+    'data': None,
+    'timestamp': 0
+}
+CACHE_DURATION = 300  # 5 minutes
+
 def get_unique_filter_options():
     """
     Fetch unique values for platform, category, tags, and types for the gallery UI.
+    Cached for CACHE_DURATION seconds.
     """
+    global _filter_cache
+    current_time = time.time()
+    
+    if _filter_cache['data'] and (current_time - _filter_cache['timestamp'] < CACHE_DURATION):
+        return _filter_cache['data']
+
     conn = sqlite3.connect(config.DB_PATH)
     c = conn.cursor()
     
@@ -140,6 +157,9 @@ def get_unique_filter_options():
                 all_tags.update(tags)
         options['tags'] = sorted(list(all_tags))
         
+        _filter_cache['data'] = options
+        _filter_cache['timestamp'] = current_time
+        
         return options
     except Exception as e:
         print(f"Database error getting options: {e}")
@@ -147,7 +167,7 @@ def get_unique_filter_options():
     finally:
         conn.close()
 
-def get_gallery_videos(filters):
+def get_gallery_videos(filters, limit=50, offset=0):
     """
     Fetch videos based on multiple filter criteria.
     filters: {'platform': [], 'category': [], 'tags': [], 'types': []}
@@ -156,7 +176,8 @@ def get_gallery_videos(filters):
     conn.row_factory = sqlite3.Row
     c = conn.cursor()
     
-    sql = "SELECT * FROM videos"
+    # Select only necessary columns for the gallery
+    sql = "SELECT id, title, file_path, platform, category, tags, summary, types FROM videos"
     conditions = []
     params = []
     
@@ -194,6 +215,10 @@ def get_gallery_videos(filters):
     
     # Order by ID or something consistent
     sql += " ORDER BY id DESC"
+    
+    # Add pagination
+    sql += " LIMIT ? OFFSET ?"
+    params.extend([limit, offset])
     
     try:
         c.execute(sql, params)

@@ -92,6 +92,19 @@
         </div>
     </div>
 
+    <!-- TikTok Style Viewer Modal -->
+    <div id="tiktok-modal" class="tiktok-modal hidden">
+        <button id="close-tiktok" class="close-tiktok-btn">&times;</button>
+        <div id="tiktok-container" class="tiktok-container">
+            <!-- Items will be injected here for vertical scrolling -->
+        </div>
+
+        <div class="tiktok-controls">
+            <button class="nav-prev"><i class="fa-solid fa-chevron-up"></i></button>
+            <button class="nav-next"><i class="fa-solid fa-chevron-down"></i></button>
+        </div>
+    </div>
+
     <!-- Template for Message -->
     <template id="message-template">
         <div class="message">
@@ -117,6 +130,24 @@
                 </div>
                 <p class="video-note"></p>
                 <!-- Removed card-actions with system-open link -->
+            </div>
+        </div>
+    </template>
+
+    <template id="tiktok-item-template">
+        <div class="tiktok-item">
+            <div class="tiktok-media-wrapper">
+                <!-- Media -->
+            </div>
+            <div class="tiktok-info">
+                <div class="tiktok-meta">
+                    <span class="tiktok-platform"></span>
+                    <h2 class="tiktok-title"></h2>
+                </div>
+                <div class="tiktok-description">
+                    <p class="tiktok-summary"></p>
+                    <div class="tiktok-tags"></div>
+                </div>
             </div>
         </div>
     </template>

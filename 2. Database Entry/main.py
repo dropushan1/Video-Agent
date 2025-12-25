@@ -121,7 +121,6 @@ def process_batch(batch):
             "platform": item['platform'],
             "file_type": item['file_type'],
             "file_path": item['file_path'],
-            "link": item.get('link'),
             "original_filename": item.get('original_filename')
         }
         insert_record(record)
@@ -226,12 +225,11 @@ def process_workflow():
 
         # 3. Smart Resume Logic (Condition A)
         raw_text = ""
-        existing_link = None
         
         if uid:
             data = get_existing_data(uid)
             if data:
-                existing_raw_text, existing_refined_text, existing_link = data
+                existing_raw_text, existing_refined_text = data
                 
                 # Condition A: Already fully processed
                 if existing_raw_text and existing_refined_text:
@@ -256,7 +254,6 @@ def process_workflow():
                         "char_count": len(raw_text),
                         "platform": platform,
                         "file_type": file_type,
-                        "link": existing_link,
                         "original_filename": original_name
                     }
                     
@@ -279,11 +276,29 @@ def process_workflow():
         
         if not raw_text: raw_text = ""
 
-        # 6. Check for Content Duplicates
+        # 6. Check for Content Duplicates (DO THIS BEFORE SAVING)
         matching_id = check_text_exists(raw_text)
         if matching_id:
             print(f"⚠️ Skipped: Duplicate content detected (Matches existing ID: {matching_id})")
             continue
+
+        # 5.5 Save Partial Record and Copy File (EAGER SAVE)
+        # This ensures we don't lose the transcription if Gemini fails
+        partial_record = {
+            "id": uid,
+            "raw_text": raw_text,
+            "platform": platform,
+            "file_type": file_type,
+            "file_path": dest_path,
+            "original_filename": original_name
+        }
+        insert_record(partial_record)
+        
+        if not os.path.exists(dest_path):
+            try:
+                shutil.copy2(file_path, dest_path)
+            except Exception as e:
+                print(f"   [Error] Eager file copy failed: {e}")
         
         item = {
             "id": uid,
@@ -293,7 +308,6 @@ def process_workflow():
             "char_count": len(raw_text),
             "platform": platform,
             "file_type": file_type,
-            "link": existing_link,
             "original_filename": original_name
         }
         

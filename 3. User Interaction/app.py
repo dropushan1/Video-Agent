@@ -184,8 +184,25 @@ def get_gallery_filters():
 
 @app.route('/api/gallery/videos', methods=['POST'])
 def get_gallery_videos():
-    filters = request.json or {}
-    videos = db_ops.get_gallery_videos(filters)
+    data = request.json or {}
+    filters = data.get('filters', {})
+    # Support both structure: { ...filters, page: 1 } or { filters: {...}, page: 1 }
+    # To maintain backward compatibility if JS sends filters directly in root:
+    # If 'filters' key exists, use it. Otherwise assume root is filters, but extract page/limit.
+    
+    if 'filters' in data:
+        filters = data['filters']
+    else:
+        # Shallow copy to avoid modifying original if needed, remove page/limit from filters
+        filters = data.copy()
+        filters.pop('page', None)
+        filters.pop('limit', None)
+
+    page = int(data.get('page', 1))
+    limit = int(data.get('limit', 50))
+    offset = (page - 1) * limit
+    
+    videos = db_ops.get_gallery_videos(filters, limit=limit, offset=offset)
     return jsonify(videos)
 
 if __name__ == '__main__':

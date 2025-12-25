@@ -8,7 +8,7 @@ PARENT_DIR = os.path.dirname(SCRIPT_DIR)
 ENTRY_DIR = os.path.join(PARENT_DIR, "2. Database Entry")
 sys.path.append(ENTRY_DIR)
 
-from data_handler import init_db, check_link_exists, insert_record, get_unique_id
+# from data_handler import init_db, check_link_exists, insert_record, get_unique_id
 
 DOWNLOAD_DIR = "TT Videos"
 
@@ -29,20 +29,12 @@ def read_links_from_file(file_path):
 
 def download_links(links, mode):
     os.makedirs(DOWNLOAD_DIR, exist_ok=True)
-    init_db() # Ensure DB is ready
 
     for index, link in enumerate(links, start=1):
         print(f"\n--- Processing {index}/{len(links)} ---")
         
-        # 1. Check for Duplicate Link
-        if check_link_exists(link):
-            print(f"⚠️ Skipping! Link already exists in database: {link}")
-            continue
-
-        # 2. Prepare UID and Options
-        uid = get_unique_id()
-        # We use UID as a prefix so main.py can recover it
-        out_tmpl = os.path.join(DOWNLOAD_DIR, f"{uid}_%(title)s.%(ext)s")
+        # Prepare Options
+        out_tmpl = os.path.join(DOWNLOAD_DIR, f"%(title)s.%(ext)s")
         
         ydl_opts = {
             "outtmpl": out_tmpl,
@@ -72,27 +64,14 @@ def download_links(links, mode):
             print(f"⬇️  Downloading: {link}")
             with YoutubeDL(ydl_opts) as ydl:
                 info = ydl.extract_info(link, download=True)
-                # Get the actual final path
                 final_filename = ydl.prepare_filename(info)
                 if mode == "mp3":
                     final_filename = os.path.splitext(final_filename)[0] + ".mp3"
                 
                 print(f"✅ Downloaded: {os.path.basename(final_filename)}")
 
-                # 4. Save to Database (Initial Entry)
-                record = {
-                    "id": uid,
-                    "link": link,
-                    "platform": "Tiktok",
-                    "file_type": "Video" if mode == "mp4" else "Audio",
-                    "file_path": final_filename
-                }
-                insert_record(record)
-                print(f"📌 Created database entry with ID: {uid}")
-
         except Exception as e:
             print(f"⚠️ Failed to download: {link}")
-            # print(e) # Keep logs clean unless needed
 
 
 def main():

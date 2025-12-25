@@ -159,30 +159,84 @@ document.addEventListener('DOMContentLoaded', () => {
                     if (parts.length > 1) {
                         const mediaUrl = `/media/${parts[1]}`;
                         const ext = rec.file_path.split('.').pop().toLowerCase();
+                        const fsBtn = card.querySelector('.fullscreen-btn');
+
                         if (['mp4', 'mov'].includes(ext)) {
                             mediaElement = document.createElement('video');
                             mediaElement.src = mediaUrl;
-                            mediaElement.controls = false; // Custom play tool
+                            mediaElement.controls = false;
+
+                            // Click video -> Zoom (Open Modal)
                             mediaElement.onclick = (e) => {
+                                e.stopPropagation();
+                                openTiktokStyleViewer(index, recs);
+                            };
+
+                            mediaContainer.appendChild(mediaElement);
+
+                            // Configure Button -> Play/Pause
+                            fsBtn.title = "Play/Pause";
+                            fsBtn.innerHTML = '<i class="fa-solid fa-play"></i>';
+
+                            fsBtn.onclick = (e) => {
                                 e.stopPropagation();
                                 if (mediaElement.paused) mediaElement.play();
                                 else mediaElement.pause();
                             };
-                            mediaContainer.appendChild(mediaElement);
+
+                            // Sync Icon with State
+                            const updateIcon = () => {
+                                fsBtn.innerHTML = mediaElement.paused
+                                    ? '<i class="fa-solid fa-play"></i>'
+                                    : '<i class="fa-solid fa-pause"></i>';
+                            };
+                            mediaElement.addEventListener('play', updateIcon);
+                            mediaElement.addEventListener('pause', updateIcon);
+                            mediaElement.addEventListener('ended', () => {
+                                mediaElement.currentTime = 0; // Reset
+                                updateIcon(); // Should show play
+                            });
+
                         } else {
                             mediaElement = document.createElement('img');
                             mediaElement.src = mediaUrl;
+
+                            // Click image -> Zoom (Open Modal)
+                            mediaElement.onclick = (e) => {
+                                e.stopPropagation();
+                                openTiktokStyleViewer(index, recs);
+                            };
+
                             mediaContainer.appendChild(mediaElement);
+
+                            // Remove button for images (click image does the job)
+                            if (fsBtn) fsBtn.remove();
                         }
                     }
                 }
 
-                // Full Screen Modal Logic
-                const fsBtn = card.querySelector('.fullscreen-btn');
-                fsBtn.onclick = (e) => {
-                    e.stopPropagation();
-                    showMediaModal(rec.file_path);
-                };
+                // Remove the old fsBtn logic outside the if block if it exists
+                // The template has the button, but we handled it above.
+                // We need to make sure we don't attach the old listener.
+                // The old listener was attached at lines 182-185.
+                // I will remove that block in this replacement or ensure it doesn't run.
+                // Since I am replacing the whole block including where lines 181-185 were, 
+                // I need to make sure I don't leave them out if they are needed for something else,
+                // but here I handled fsBtn logic inside the if(rec.file_path). 
+                // Wait, what if rec.file_path is missing? 
+                // If missing, mediaElement is null, logic skips. 
+                // The fsBtn would remain with default icon but do nothing?
+                // The original code lines 181-185:
+                /*
+                 const fsBtn = card.querySelector('.fullscreen-btn');
+                 fsBtn.onclick = (e) => {
+                     e.stopPropagation();
+                     openTiktokStyleViewer(index, recs);
+                 };
+                */
+                // In my replacement, I am handling fsBtn inside the file_path block.
+                // If no file_path, the card has no media, so button is useless. Maybe remove it?
+                // But the original code only created mediaElement if file_path existed.
 
                 grid.appendChild(card);
             });
@@ -194,43 +248,185 @@ document.addEventListener('DOMContentLoaded', () => {
         if (shouldScroll) chatHistory.scrollTop = chatHistory.scrollHeight;
     };
 
-    // --- Modal Logic ---
-    const mediaModal = document.getElementById('media-modal');
-    const modalBody = document.getElementById('modal-body');
-    const closeModal = document.getElementById('close-modal');
+    // --- TikTok Style Viewer ---
+    const tiktokModal = document.getElementById('tiktok-modal');
+    const tiktokContainer = document.getElementById('tiktok-container');
+    const closeTiktok = document.getElementById('close-tiktok');
+    const navPrev = document.querySelector('.nav-prev');
+    const navNext = document.querySelector('.nav-next');
 
-    const showMediaModal = (filePath) => {
-        modalBody.innerHTML = '';
-        const parts = filePath.split('All Files/');
-        if (parts.length <= 1) return;
-
-        const mediaUrl = `/media/${parts[1]}`;
-        const ext = filePath.split('.').pop().toLowerCase();
-
-        if (['mp4', 'mov'].includes(ext)) {
-            const v = document.createElement('video');
-            v.src = mediaUrl;
-            v.controls = true;
-            v.autoplay = true;
-            modalBody.appendChild(v);
+    // Reuse play/pause overlay logic
+    const togglePlayPause = (video, wrapper) => {
+        if (video.paused) {
+            video.play();
+            showPlayPauseIcon(wrapper, 'play');
         } else {
-            const img = document.createElement('img');
-            img.src = mediaUrl;
-            modalBody.appendChild(img);
+            video.pause();
+            showPlayPauseIcon(wrapper, 'pause');
         }
-
-        mediaModal.classList.remove('hidden');
     };
 
-    const hideMediaModal = () => {
-        mediaModal.classList.add('hidden');
-        modalBody.innerHTML = '';
+    const showPlayPauseIcon = (wrapper, type) => {
+        // Remove existing overlay
+        const existing = wrapper.querySelector('.play-pause-overlay');
+        if (existing) existing.remove();
+
+        const overlay = document.createElement('div');
+        overlay.className = 'play-pause-overlay';
+        overlay.innerHTML = type === 'play' ? '<i class="fa-solid fa-play"></i>' : '<i class="fa-solid fa-pause"></i>';
+        wrapper.appendChild(overlay);
+
+        // Auto remove handled by CSS animation, but cleanup is good
+        setTimeout(() => {
+            if (overlay.parentNode === wrapper) overlay.remove();
+        }, 800);
     };
 
-    closeModal.onclick = hideMediaModal;
-    mediaModal.onclick = (e) => {
-        if (e.target === mediaModal) hideMediaModal();
+    const openTiktokStyleViewer = (startIndex, videos) => {
+        tiktokContainer.innerHTML = '';
+        const template = document.getElementById('tiktok-item-template');
+
+        videos.forEach((vid, index) => {
+            const clone = template.content.cloneNode(true);
+            const item = clone.querySelector('.tiktok-item');
+
+            item.querySelector('.tiktok-platform').innerText = vid.platform || 'Knowledge';
+            item.querySelector('.tiktok-title').innerText = vid.title || 'Untitled';
+
+            // Use note as summary if summary is missing (Chat returns note)
+            item.querySelector('.tiktok-summary').innerText = vid.summary || vid.note || '';
+
+            const mediaWrapper = item.querySelector('.tiktok-media-wrapper');
+            if (vid.file_path) {
+                const parts = vid.file_path.split('All Files/');
+                if (parts.length > 1) {
+                    const mediaUrl = `/media/${parts[1]}`;
+                    const ext = vid.file_path.split('.').pop().toLowerCase();
+                    if (['mp4', 'mov'].includes(ext)) {
+                        const v = document.createElement('video');
+                        v.src = mediaUrl;
+                        v.loop = true;
+                        // Click to toggle play/pause
+                        v.onclick = () => togglePlayPause(v, mediaWrapper);
+
+                        // Hide initially for polish
+                        v.style.opacity = '0';
+                        v.style.transition = 'opacity 0.3s';
+
+                        // Show when ready
+                        v.onloadeddata = () => {
+                            v.style.opacity = '1';
+                        };
+
+                        mediaWrapper.appendChild(v);
+                    } else {
+                        const img = document.createElement('img');
+                        img.src = mediaUrl;
+                        mediaWrapper.appendChild(img);
+                    }
+                }
+            }
+
+            tiktokContainer.appendChild(clone);
+        });
+
+        tiktokModal.classList.remove('hidden');
+
+        // Scroll to the clicked item
+        setTimeout(() => {
+            const items = tiktokContainer.querySelectorAll('.tiktok-item');
+            if (items[startIndex]) {
+                items[startIndex].scrollIntoView({ behavior: 'auto', block: 'start' });
+                // Force a check after scroll
+                setTimeout(playCurrentVideo, 100);
+            }
+        }, 100);
     };
+
+    const playCurrentVideo = () => {
+        const items = tiktokContainer.querySelectorAll('.tiktok-item');
+        const containerRect = tiktokContainer.getBoundingClientRect();
+
+        items.forEach(item => {
+            const rect = item.getBoundingClientRect();
+            const video = item.querySelector('video');
+            if (!video) return;
+
+            // If item is visible in container (with tolerance)
+            if (Math.abs(rect.top - containerRect.top) < 50) {
+                video.play().catch(e => console.log("Auto-play blocked"));
+            } else {
+                video.pause();
+                video.currentTime = 0;
+            }
+        });
+    };
+
+    tiktokContainer.onscroll = () => {
+        clearTimeout(window.scrollTimeout);
+        window.scrollTimeout = setTimeout(playCurrentVideo, 100);
+    };
+
+    closeTiktok.onclick = () => {
+        tiktokModal.classList.add('hidden');
+        tiktokContainer.querySelectorAll('video').forEach(v => v.pause());
+    };
+
+    navPrev.onclick = () => {
+        tiktokContainer.scrollBy({ top: -window.innerHeight, behavior: 'smooth' });
+    };
+
+    navNext.onclick = () => {
+        tiktokContainer.scrollBy({ top: window.innerHeight, behavior: 'smooth' });
+    };
+
+    // Hijack Scroll for One-at-a-time
+    let isScrolling = false;
+    tiktokContainer.addEventListener('wheel', (e) => {
+        if (tiktokModal.classList.contains('hidden')) return;
+        e.preventDefault();
+
+        if (isScrolling) return;
+
+        if (Math.abs(e.deltaY) > 20) {
+            isScrolling = true;
+            if (e.deltaY > 0) {
+                navNext.click();
+            } else {
+                navPrev.click();
+            }
+            setTimeout(() => { isScrolling = false; }, 800);
+        }
+    }, { passive: false });
+
+    // Keyboard support
+    document.addEventListener('keydown', (e) => {
+        if (!tiktokModal.classList.contains('hidden')) {
+            if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                navNext.click();
+            } else if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                navPrev.click();
+            } else if (e.key === 'Escape') {
+                closeTiktok.click();
+            } else if (e.key === ' ' || e.key === 'Spacebar') {
+                // Toggle play/pause for current video
+                e.preventDefault();
+                const items = tiktokContainer.querySelectorAll('.tiktok-item');
+                const containerRect = tiktokContainer.getBoundingClientRect();
+                items.forEach(item => {
+                    const rect = item.getBoundingClientRect();
+                    if (Math.abs(rect.top - containerRect.top) < 50) {
+                        const video = item.querySelector('video');
+                        const wrapper = item.querySelector('.tiktok-media-wrapper');
+                        if (video) togglePlayPause(video, wrapper);
+                    }
+                });
+            }
+        }
+    });
+
 
     window.toggleGallery = (id) => {
         const el = document.getElementById(id);

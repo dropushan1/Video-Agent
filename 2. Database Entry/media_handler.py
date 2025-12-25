@@ -6,15 +6,20 @@ from PIL import Image
 from io import BytesIO
 from pillow_heif import register_heif_opener
 import requests
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
 
 # Register HEIF opener
 register_heif_opener()
 
-# API Keys (Ideally these should be in a config/env file, but keeping here for simplicity as per previous code)
-AAI_API_KEY = "620c0557617d4821a0f29514237e2e08"
-OCR_API_KEY = "K83546019488957"
+# API Keys from environment
+AAI_API_KEY = os.getenv("AAI_API_KEY")
+OCR_API_KEY = os.getenv("OCR_API_KEY")
 
-aai.settings.api_key = AAI_API_KEY
+if AAI_API_KEY:
+    aai.settings.api_key = AAI_API_KEY
 
 def transcribe_audio(file_path):
     """

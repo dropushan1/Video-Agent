@@ -19,8 +19,19 @@ document.addEventListener('DOMContentLoaded', () => {
         types: []
     };
 
+    // Pagination State
+    let currentPage = 1;
+    const limit = 50;
+    let isLoading = false;
+    let hasMore = true;
+
     // --- Init ---
     const init = async () => {
+        // Reset filters on page refresh (reload)
+        if (performance.getEntriesByType("navigation")[0]?.type === "reload") {
+            sessionStorage.removeItem('galleryFilters');
+        }
+
         // Load session filters
         const savedFilters = sessionStorage.getItem('galleryFilters');
         if (savedFilters) {
@@ -28,18 +39,38 @@ document.addEventListener('DOMContentLoaded', () => {
             updateFilterCount();
         }
         await loadFilters();
-        await fetchVideos();
+        await fetchVideos(false);
+
+        // Infinite scroll for grid
+        // Use the main container causing the scroll, not window
+        const mainContainer = document.getElementById('gallery-main');
+        if (mainContainer) {
+            mainContainer.addEventListener('scroll', handleScroll);
+        }
+    };
+
+    const handleScroll = (e) => {
+        if (isLoading || !hasMore) return;
+        const target = e.target;
+        // Check if we are near the bottom of the container
+        if ((target.scrollTop + target.clientHeight) >= target.scrollHeight - 500) {
+            fetchVideos(true);
+        }
     };
 
     // --- Filter Management ---
     const loadFilters = async () => {
-        const res = await fetch('/api/gallery/filters');
-        const options = await res.json();
+        try {
+            const res = await fetch('/api/gallery/filters');
+            const options = await res.json();
 
-        renderFilterGroup('platform', options.platform);
-        renderFilterGroup('category', options.category);
-        renderFilterGroup('types', options.types);
-        renderFilterGroup('tags', options.tags);
+            renderFilterGroup('platform', options.platform);
+            renderFilterGroup('category', options.category);
+            renderFilterGroup('types', options.types);
+            renderFilterGroup('tags', options.tags);
+        } catch (e) {
+            console.error("Failed to load filters", e);
+        }
     };
 
     const renderFilterGroup = (type, items) => {
@@ -87,7 +118,7 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     applyFilterBtn.onclick = () => {
-        fetchVideos();
+        fetchVideos(false);
         filterPanel.classList.add('hidden');
     };
 
@@ -111,26 +142,66 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     // --- Video Fetching & Rendering ---
-    const fetchVideos = async () => {
-        const res = await fetch('/api/gallery/videos', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(activeFilters)
-        });
-        allVideos = await res.json();
-        renderGallery();
+    const fetchVideos = async (isAppend = false) => {
+        if (isLoading) return;
+        isLoading = true;
+
+        if (!isAppend) {
+            currentPage = 1;
+            allVideos = [];
+            videoGrid.innerHTML = '';
+            hasMore = true;
+        }
+
+        const payload = {
+            filters: activeFilters,
+            page: currentPage,
+            limit: limit
+        };
+
+        try {
+            const res = await fetch('/api/gallery/videos', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            const newVideos = await res.json();
+
+            if (newVideos.length < limit) {
+                hasMore = false;
+            }
+
+            if (!isAppend) {
+                allVideos = newVideos;
+                if (allVideos.length === 0) {
+                    emptyState.classList.remove('hidden');
+                } else {
+                    emptyState.classList.add('hidden');
+                    renderGallery(newVideos);
+                }
+            } else {
+                allVideos = [...allVideos, ...newVideos];
+                renderGallery(newVideos);
+            }
+
+            currentPage++;
+        } catch (e) {
+            console.error("Error fetching videos", e);
+        } finally {
+            isLoading = false;
+        }
     };
 
-    const renderGallery = () => {
-        videoGrid.innerHTML = '';
-        if (allVideos.length === 0) {
-            emptyState.classList.remove('hidden');
-            return;
-        }
-        emptyState.classList.add('hidden');
-
+    const renderGallery = (videosToRender) => {
         const template = document.getElementById('gallery-card-template');
-        allVideos.forEach((vid, index) => {
+
+        // Calculate global starting index for these new videos
+        // If allVideos has 100 items, and we just added 50 (videosToRender), 
+        // the start index is 100 - 50 = 50.
+        const startIndex = allVideos.length - videosToRender.length;
+
+        videosToRender.forEach((vid, i) => {
+            const globalIndex = startIndex + i;
             const clone = template.content.cloneNode(true);
             const card = clone.querySelector('.gallery-card');
 
@@ -148,18 +219,20 @@ document.addEventListener('DOMContentLoaded', () => {
                         v.src = mediaUrl;
                         v.muted = true;
                         v.loop = true;
-                        v.onmouseover = () => v.play();
+                        // Lazy play on hover
+                        v.onmouseover = () => v.play().catch(() => { });
                         v.onmouseout = () => v.pause();
                         mediaContainer.prepend(v);
                     } else {
                         const img = document.createElement('img');
                         img.src = mediaUrl;
+                        img.loading = "lazy"; // Native lazy load
                         mediaContainer.prepend(img);
                     }
                 }
             }
 
-            card.onclick = () => openTiktokViewer(index);
+            card.onclick = () => openTiktokViewer(globalIndex);
             videoGrid.appendChild(clone);
         });
     };
@@ -198,10 +271,19 @@ document.addEventListener('DOMContentLoaded', () => {
                     const ext = vid.file_path.split('.').pop().toLowerCase();
                     if (['mp4', 'mov'].includes(ext)) {
                         const v = document.createElement('video');
-                        v.src = mediaUrl;
+                        v.dataset.src = mediaUrl;
                         v.controls = true;
                         v.loop = true;
                         v.dataset.type = 'video';
+                        // Hide initially to prevent "empty player" ugly UI
+                        v.style.opacity = '0';
+                        v.style.transition = 'opacity 0.3s';
+
+                        // Show when ready
+                        v.onloadeddata = () => {
+                            v.style.opacity = '1';
+                        };
+
                         mediaWrapper.appendChild(v);
                     } else {
                         const img = document.createElement('img');
@@ -236,11 +318,16 @@ document.addEventListener('DOMContentLoaded', () => {
             const video = item.querySelector('video');
             if (!video) return;
 
-            // If item is visible in container
-            if (Math.abs(rect.top - containerRect.top) < 10) {
+            // If item is visible in container (with some tolerance)
+            if (Math.abs(rect.top - containerRect.top) < 50) {
+                // Initialize src if needed
+                if (!video.src && video.dataset.src) {
+                    video.src = video.dataset.src;
+                }
                 video.play().catch(e => console.log("Auto-play blocked"));
             } else {
                 video.pause();
+                // Reset to start to save memory/logic as requested
                 video.currentTime = 0;
             }
         });
