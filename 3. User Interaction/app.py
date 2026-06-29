@@ -88,45 +88,35 @@ def chat():
         # Save user message
         chat_db.add_message(session_id, 'user', query)
 
-        # Step 1: Filtering (Pass history)
-        meta = db_ops.load_metadata()
-        filter_criteria = agent_logic.run_filtering_agent(query, meta, chat_history=history)
-        
-        candidates = db_ops.search_videos_by_criteria(filter_criteria)
-        if not candidates:
-            msg = "I couldn't find any relevant videos in my database to help with that. Maybe try rephrasing or asking something else?"
-            chat_db.add_message(session_id, 'ai', msg)
-            return jsonify({
-                "answer_text": msg,
-                "recommendations_with_notes": [],
-                "other_recommendations": []
-            })
-
-        # Step 2: Refining
-        ranked_ids = agent_logic.run_refinement_agent(query, candidates)
-        
-        # Prune based on 50k limit
+        use_db = data.get('use_db', True)
         final_video_details = []
-        current_char_count = 0
-        details_map = db_ops.get_full_video_details(ranked_ids)
-        
-        for vid_id in ranked_ids:
-            if vid_id not in details_map:
-                continue
-            vid = details_map[vid_id]
-            text = vid.get('refined_text', '') or ""
-            text_len = len(text)
-            
-            if current_char_count + text_len <= CHARACTER_LIMIT:
-                final_video_details.append(vid)
-                current_char_count += text_len
-            else:
-                break
 
-        if not final_video_details:
-             msg = "Found relevant videos, but their content is too large to process. Please try a more specific question."
-             chat_db.add_message(session_id, 'ai', msg)
-             return jsonify({"error": msg}), 413
+        if use_db:
+            # Step 1: Filtering (Pass history)
+            meta = db_ops.load_metadata()
+            filter_criteria = agent_logic.run_filtering_agent(query, meta, chat_history=history)
+            
+            candidates = db_ops.search_videos_by_criteria(filter_criteria)
+            if candidates:
+                # Step 2: Refining
+                ranked_ids = agent_logic.run_refinement_agent(query, candidates)
+                
+                # Prune based on 50k limit
+                details_map = db_ops.get_full_video_details(ranked_ids)
+                current_char_count = 0
+                
+                for vid_id in ranked_ids:
+                    if vid_id not in details_map:
+                        continue
+                    vid = details_map[vid_id]
+                    text = vid.get('refined_text', '') or ""
+                    text_len = len(text)
+                    
+                    if current_char_count + text_len <= CHARACTER_LIMIT:
+                        final_video_details.append(vid)
+                        current_char_count += text_len
+                    else:
+                        break
 
         # Step 3: Response (Pass history)
         response = agent_logic.run_response_agent(query, final_video_details, chat_history=history)

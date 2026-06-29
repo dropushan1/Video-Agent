@@ -450,17 +450,25 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const handleSend = async () => {
         const query = userInput.value.trim();
+        const useDb = document.getElementById('db-toggle').checked;
+
         if (!query || !currentSessionId) return;
 
         addMessage(query, 'user');
         userInput.value = '';
-        setLoader(true, "Searching knowledge...");
+
+        const loaderMsg = useDb ? "Searching knowledge..." : "Thinking...";
+        setLoader(true, loaderMsg);
 
         try {
             const res = await fetch('/api/chat', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ query, session_id: currentSessionId })
+                body: JSON.stringify({
+                    query,
+                    session_id: currentSessionId,
+                    use_db: useDb
+                })
             });
             const data = await res.json();
             setLoader(false);
