@@ -50,7 +50,7 @@ def transcribe_audio(file_path):
                 return None
 
         # Transcribe
-        config = aai.TranscriptionConfig(speech_model='nano', language_code='en')
+        config = aai.TranscriptionConfig(speech_models=["universal-3-pro", "universal-2"], language_code='en')
         transcriber = aai.Transcriber(config=config)
         transcript = transcriber.transcribe(target_path)
 
