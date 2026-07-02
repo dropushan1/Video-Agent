@@ -67,16 +67,43 @@ def insert_record(record):
 def check_filename_exists(filename):
     """
     Checks if a record with the same original_filename already exists.
-    Returns True if exists, False otherwise.
+    Returns the id if exists, None otherwise.
+    """
+    record = get_record_by_filename(filename)
+    return record["id"] if record else None
+
+def get_record_by_filename(filename):
+    """
+    Returns full record fields for a given original_filename, or None.
     """
     if not filename or not filename.strip():
-        return False
+        return None
     conn = sqlite3.connect(DB_NAME)
     c = conn.cursor()
-    c.execute("SELECT id FROM videos WHERE original_filename = ? LIMIT 1", (filename,))
-    result = c.fetchone()
+    c.execute(
+        "SELECT id, raw_text, refined_text, file_path, platform, file_type "
+        "FROM videos WHERE original_filename = ? LIMIT 1",
+        (filename,),
+    )
+    row = c.fetchone()
     conn.close()
-    return result[0] if result else None
+    if not row:
+        return None
+    return {
+        "id": row[0],
+        "raw_text": row[1],
+        "refined_text": row[2],
+        "file_path": row[3],
+        "platform": row[4],
+        "file_type": row[5],
+    }
+
+def is_fully_processed(record):
+    """True when Gemini output exists (refined_text populated)."""
+    if not record:
+        return False
+    refined = record.get("refined_text")
+    return bool(refined and refined.strip())
 
 def check_text_exists(raw_text):
     """
@@ -199,7 +226,7 @@ def analyze_batch(items):
 
     try:
         response = current_client.models.generate_content(
-            model="gemini-3-flash-preview", 
+            model="gemini-2.5-flash", 
             contents=prompt
         )
         

@@ -2,7 +2,10 @@ import os
 import shutil
 import uuid
 import glob
-from data_handler import init_db, insert_record, analyze_batch, save_new_metadata, get_unique_id, check_text_exists, get_existing_data, load_metadata, check_filename_exists
+from data_handler import (
+    init_db, insert_record, analyze_batch, save_new_metadata, get_unique_id,
+    check_text_exists, load_metadata, get_record_by_filename, is_fully_processed,
+)
 from media_handler import transcribe_audio, process_image
 import time
 
@@ -127,6 +130,16 @@ def process_batch(batch):
         print(f"   ✅ Saved ID {item['id']}")
 
 
+def append_to_batch(item, current_batch, current_chars):
+    if current_chars + item['char_count'] > MAX_BATCH_CHARS:
+        process_batch(current_batch)
+        current_batch = []
+        current_chars = 0
+    current_batch.append(item)
+    current_chars += item['char_count']
+    return current_batch, current_chars
+
+
 def process_workflow():
     # 1. Inputs
     input_folder = input("Enter the full path to the source folder: ").strip('"').strip("'")
@@ -178,128 +191,97 @@ def process_workflow():
         original_name = filename # Default if not already prefixed
         file_ext = os.path.splitext(filename)[1].lower()
 
-        # Check for {8 chars}_ pattern
+        # Check for {8 chars}_ pattern (used for new files copied to All Files)
         if len(filename) > 9 and filename[8] == '_':
             potential_uid = filename[:8]
             if potential_uid.isalnum():
                 uid = potential_uid
                 original_name = filename[9:] # Everything after the first '_'
 
-        # 2. Early Duplicate Checks
-        # A) Check by Original Name (The text after the ID_ or the raw filename)
-        match_id = check_filename_exists(original_name)
-        if match_id:
-            print(f"⚠️ Skipped: Filename duplicate detected (Matches existing ID: {match_id})")
-            continue
-        
-        # B) Check by ID (If we extracted one from the filename)
-        if uid:
-            data = get_existing_data(uid)
-            if data:
-                # If fully processed, skip
-                if data[0] and data[1]:
-                    print(f"⚠️ Skipped: Already processed (Matches existing ID: {uid})")
-                    continue
-        
-        # 3. Generate ID if new
-        if not uid:
-            uid = get_unique_id()
-        
-        new_filename = f"{uid}_{original_name}"
-
-        # 4. Determine Type
+        # Determine file type
         file_type = "Unknown"
-        video_exts = {'.mp4', '.mov'}
-        audio_exts = {'.mp3'}
-        image_exts = {'.jpg', '.jpeg', '.png', '.heic', '.webp'}
-
         if file_ext in video_exts:
             file_type = "Video"
         elif file_ext in audio_exts:
             file_type = "Audio"
         elif file_ext in image_exts:
             file_type = "Image"
-        
+
+        # Smart duplicate / resume by original filename
+        existing = get_record_by_filename(original_name)
+        if existing:
+            dest_path = existing.get("file_path") or ""
+            if is_fully_processed(existing):
+                print(f"⚠️ Skipped: Already processed (Matches existing ID: {existing['id']})")
+                if dest_path and not os.path.exists(dest_path):
+                    try:
+                        shutil.copy2(file_path, dest_path)
+                    except OSError:
+                        pass
+                continue
+
+            if existing.get("raw_text") and existing["raw_text"].strip():
+                print(f"🔄 Resuming: transcription exists, queuing for Gemini (ID: {existing['id']})")
+                if dest_path and not os.path.exists(dest_path):
+                    try:
+                        shutil.copy2(file_path, dest_path)
+                    except Exception as e:
+                        print(f"   [Error] File copy failed: {e}")
+
+                item = {
+                    "id": existing["id"],
+                    "file_path": dest_path,
+                    "source_path": file_path,
+                    "raw_text": existing["raw_text"],
+                    "char_count": len(existing["raw_text"]),
+                    "platform": existing.get("platform") or platform,
+                    "file_type": existing.get("file_type") or file_type,
+                    "original_filename": original_name,
+                }
+                current_batch, current_chars = append_to_batch(item, current_batch, current_chars)
+                continue
+
+        # New file
+        if not uid:
+            uid = get_unique_id()
+
+        new_filename = f"{uid}_{original_name}"
         dest_folder = get_dest_folder(platform, file_type)
         dest_path = os.path.join(dest_folder, new_filename)
 
-        # 3. Smart Resume Logic (Condition A)
+        # Extract text (transcription / OCR)
         raw_text = ""
-        
-        if uid:
-            data = get_existing_data(uid)
-            if data:
-                existing_raw_text, existing_refined_text = data
-                
-                # Condition A: Already fully processed
-                if existing_raw_text and existing_refined_text:
-                    print(f"⚠️ Skipped: Already processed (Matches existing ID: {uid})")
-                    if not os.path.exists(dest_path):
-                         try:
-                            shutil.copy2(file_path, dest_path)
-                         except:
-                            pass 
-                    continue
-                
-                # Condition B: Resume AI (Has raw but no refined)
-                if existing_raw_text:
-                    print(f"🔄 Resuming: Has text, adding to queue (ID: {uid})")
-                    raw_text = existing_raw_text
-                    
-                    item = {
-                        "id": uid,
-                        "file_path": dest_path,
-                        "source_path": file_path,
-                        "raw_text": raw_text,
-                        "char_count": len(raw_text),
-                        "platform": platform,
-                        "file_type": file_type,
-                        "original_filename": original_name
-                    }
-                    
-                    # Batch Management
-                    if current_chars + item['char_count'] > MAX_BATCH_CHARS:
-                        process_batch(current_batch)
-                        current_batch = []
-                        current_chars = 0
-                    
-                    current_batch.append(item)
-                    current_chars += item['char_count']
-                    continue 
-
-        # Condition C: New File (Transcription needed)
-        # 5. Extract Text (Delay copying)
         if file_type == "Audio" or file_type == "Video":
             raw_text = transcribe_audio(file_path)
         elif file_type == "Image":
             raw_text = process_image(file_path)
-        
-        if not raw_text: raw_text = ""
 
-        # 6. Check for Content Duplicates (DO THIS BEFORE SAVING)
+        if not raw_text:
+            raw_text = ""
+
+        # Content duplicate check (new files only)
         matching_id = check_text_exists(raw_text)
         if matching_id:
             print(f"⚠️ Skipped: Duplicate content detected (Matches existing ID: {matching_id})")
             continue
 
-        # 5.5 Save Partial Record and Copy File (EAGER SAVE)
-        # This ensures we don't lose the transcription if Gemini fails
+        # Save partial record and copy file before Gemini
         partial_record = {
             "id": uid,
             "raw_text": raw_text,
             "platform": platform,
             "file_type": file_type,
             "file_path": dest_path,
-            "original_filename": original_name
+            "original_filename": original_name,
         }
         insert_record(partial_record)
-        
+
         if not os.path.exists(dest_path):
             try:
                 shutil.copy2(file_path, dest_path)
             except Exception as e:
                 print(f"   [Error] Eager file copy failed: {e}")
-        
+
         item = {
             "id": uid,
             "file_path": dest_path,
@@ -308,17 +290,9 @@ def process_workflow():
             "char_count": len(raw_text),
             "platform": platform,
             "file_type": file_type,
-            "original_filename": original_name
+            "original_filename": original_name,
         }
-        
-        # Batch Management
-        if current_chars + item['char_count'] > MAX_BATCH_CHARS:
-            process_batch(current_batch)
-            current_batch = []
-            current_chars = 0
-        
-        current_batch.append(item)
-        current_chars += item['char_count']
+        current_batch, current_chars = append_to_batch(item, current_batch, current_chars)
 
     # Final batch
     process_batch(current_batch)
